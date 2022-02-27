@@ -9,11 +9,82 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, globalShortcut } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+import { uIOhook, UiohookKey } from 'uiohook-napi';
+
+// import ioHook from 'iohook';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
+
+const ks = require('node-key-sender');
+
+const child = require('child_process').execFile;
+
+const keycodeMap = new Map(Object.entries(UiohookKey).map((_) => [_[1], _[0]]));
+
+let keys: string;
+
+const colorHexIndex: { [name: string]: string } = {
+  black: '#000000',
+};
+
+function ColorContains(colorString: string): boolean {
+  let returnValue = false;
+  Object.entries(colorHexIndex).forEach(([key, value]) => {
+    if (key.includes(colorString)) {
+      returnValue = true;
+    }
+  });
+  return returnValue;
+}
+
+function CheckKeys(keyString: string): boolean {
+  const colorname = keyString.toLocaleLowerCase();
+  if (ColorContains(keyString.toLocaleLowerCase())) {
+    const colorHex = colorHexIndex[colorname];
+    if (colorHex != null) {
+      for (let i = 0; i < colorname.length; i += 1) {
+        ks.sendKey('back_space');
+      }
+      ks.sendKeys(colorHex);
+    }
+  }
+  if ('black'.toLowerCase().includes(keyString)) {
+    return true;
+  }
+  return false;
+}
+
+uIOhook.on('keydown', (e) => {
+  keys += keycodeMap.get(e.keycode as any)?.toLocaleLowerCase();
+  if (!CheckKeys(keys)) {
+    uIOhook.stop();
+  }
+});
+
+// eslint-disable-next-line promise/catch-or-return
+app.whenReady().then(() => {
+  // Register a 'CommandOrControl+X' shortcut listener.
+  const ret = globalShortcut.register('$', () => {
+    keys = '';
+    uIOhook.start();
+  });
+
+  if (!ret) {
+    console.log('registration failed');
+  }
+  return 0;
+});
+
+app.on('will-quit', () => {
+  // Unregister a shortcut.
+  globalShortcut.unregister('$');
+
+  // Unregister all shortcuts.
+  globalShortcut.unregisterAll();
+});
 
 export default class AppUpdater {
   constructor() {
@@ -22,6 +93,17 @@ export default class AppUpdater {
     autoUpdater.checkForUpdatesAndNotify();
   }
 }
+
+// const executablePath = 'notepad.exe';
+
+// child(executablePath, (err: any, data: { toString: () => any }) => {
+//   if (err) {
+//     console.error(err);
+//     return;
+//   }
+
+//   console.log(data.toString());
+// });
 
 let mainWindow: BrowserWindow | null = null;
 
